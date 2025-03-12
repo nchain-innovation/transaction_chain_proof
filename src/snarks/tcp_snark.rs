@@ -18,6 +18,12 @@ pub struct TransactionChainProofPublicInput {
     pub outpoint: OutPoint,
 }
 
+impl From<TransactionChainProofPublicInput> for MessageOutPoint {
+    fn from(value: TransactionChainProofPublicInput) -> Self {
+        Self::new(&value.outpoint)
+    }
+}
+
 /// The witness of [TransactionChainProofSNARK]
 #[derive(Clone)]
 pub struct TransactionChainProofWitness<Proof> {

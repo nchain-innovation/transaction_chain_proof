@@ -3,16 +3,17 @@ use std::marker::PhantomData;
 use ark_ff::PrimeField;
 use ark_pcd::PCDPredicate;
 
-use bitcoin_r1cs::constraints::{
-    outpoint::OutPointVar,
-    tx::{TxVar, TxVarConfig},
+use bitcoin_r1cs::{
+    constraints::{
+        outpoint::OutPointVar,
+        tx::{TxVar, TxVarConfig},
+    },
+    sha256::constraints::DigestVar,
 };
 
 use ark_relations::r1cs::{ConstraintSystemRef, SynthesisError};
 
 use ark_r1cs_std::{ToBytesGadget, boolean::Boolean, uint32::UInt32};
-
-use ark_crypto_primitives::crh::sha256::constraints::DigestVar;
 
 use ark_r1cs_std::eq::EqGadget;
 

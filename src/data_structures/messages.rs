@@ -11,13 +11,14 @@ use std::{borrow::Borrow, marker::PhantomData};
 
 use ark_ff::PrimeField;
 
-use bitcoin_r1cs::constraints::{outpoint::OutPointVar, tx::TxVarConfig};
+use bitcoin_r1cs::{
+    constraints::{outpoint::OutPointVar, tx::TxVarConfig},
+    sha256::constraints::DigestVar,
+};
 
 use ark_relations::r1cs::{Namespace, SynthesisError};
 
 use ark_r1cs_std::{ToBytesGadget, alloc::AllocVar};
-
-use ark_crypto_primitives::crh::sha256::constraints::DigestVar;
 
 use ark_r1cs_std::uint8::UInt8;
 

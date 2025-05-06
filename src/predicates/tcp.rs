@@ -32,13 +32,13 @@ use crate::data_structures::{
 ///
 /// **Parties:** Alice, Bob
 ///
-/// **Common knowledge:** `genesis_txid`, `chain_index`
+/// **Common knowledge:** `genesis_txid`, `input_index`, `output_index`
 ///
 /// **Goal:**
-/// Alice holds a transaction `Tx` and she wants to prove that `Tx.outputs[chain_index]` belongs to a transaction chain
-/// with index `chain_index` starting at `genesis_txid`. Namely, there exist a chain `(Tx0, Tx1, Tx2, .., Txn)` such that:
+/// Alice holds a transaction `Tx` and she wants to prove that `Tx.outputs[output_index]` belongs to a transaction chain
+/// with indices `(input_index, output_index)` starting at `genesis_txid`. Namely, there exist a chain `(Tx0, Tx1, Tx2, .., Txn)` such that:
 /// 1. `Tx0.txid() = genesis_txid`
-/// 2. `Tx(i+1).inputs[chain_index] = (Txi.txid(), chain_index)`, `0 <= i <= n-1`
+/// 2. `Tx(i+1).inputs[input_index] = (Txi.txid(), output_index)`, `0 <= i <= n-1`
 /// 3. `Txn = Tx`
 ///
 /// The circuit is the following:
@@ -48,27 +48,29 @@ use crate::data_structures::{
 ///
 /// ```"not rust"
 /// match base_case {
-///     true => (msg.outpoint == (genesis_txid, chain_index))
+///     true => (msg.outpoint == (genesis_txid, output_index))
 ///     false => {
-///                 (msg.outpoint == (witness.tx.txid(), chain_index))
-///                     AND (witness.inputs[chain_index].prev_output == prior_msgs)
+///                 (msg.outpoint == (witness.tx.txid(), output_index))
+///                     AND (witness.inputs[input_index].prev_output == prior_msgs)
 ///     }
 /// }
 /// ```
 pub struct TransactionChainProofPredicate<P: TxVarConfig + Clone> {
     /// The transaction ID of the genesis of the Transaction Chain
     pub genesis_txid: [u8; 32],
-    /// The index of the chain
-    pub chain_index: u32,
+    /// The indices of the chain
+    pub input_index: u32,
+    pub output_index: u32,
     /// The structure of the transactions in the chain
     _config: PhantomData<P>,
 }
 
 impl<P: TxVarConfig + Clone> TransactionChainProofPredicate<P> {
-    pub fn new(txid: &[u8; 32], index: &u32) -> Self {
+    pub fn new(txid: &[u8; 32], input_index: u32, output_index: u32) -> Self {
         Self {
             genesis_txid: *txid,
-            chain_index: *index,
+            input_index,
+            output_index,
             _config: PhantomData,
         }
     }
@@ -78,7 +80,8 @@ impl<P: TxVarConfig + Clone> Clone for TransactionChainProofPredicate<P> {
     fn clone(&self) -> Self {
         Self {
             genesis_txid: self.genesis_txid,
-            chain_index: self.chain_index,
+            input_index: self.input_index,
+            output_index: self.output_index,
             _config: PhantomData,
         }
     }
@@ -112,18 +115,18 @@ impl<F: PrimeField, P: TxVarConfig + Clone> PCDPredicate<F> for TransactionChain
         let txid_witness = Hash256Gadget::<F>::evaluate(witness.to_bytes()?.as_slice())?;
 
         // Note that both `prev_tx` and `prev_index` are hard-coded as constants
-        // This is because the `genesis_txid` and the `chain_index` are a parameters of the predicate
+        // This is because the `genesis_txid`, `input_index` and `output_index` are a parameters of the predicate
         let base_case_expected_input = {
             OutPointVar::<F> {
                 prev_tx: genesis_txid.clone(),
-                prev_index: UInt32::<F>::constant(self.chain_index),
+                prev_index: UInt32::<F>::constant(self.output_index),
             }
         };
 
         let recursive_case_expected_input = {
             OutPointVar::<F> {
                 prev_tx: txid_witness.clone(),
-                prev_index: UInt32::<F>::constant(self.chain_index),
+                prev_index: UInt32::<F>::constant(self.output_index),
             }
         };
 
@@ -135,7 +138,7 @@ impl<F: PrimeField, P: TxVarConfig + Clone> PCDPredicate<F> for TransactionChain
             msg.outpoint.is_eq(&recursive_case_expected_input)?,
             prior_msgs[0]
                 .outpoint
-                .is_eq(&witness.inputs[self.chain_index as usize].prev_output)?,
+                .is_eq(&witness.inputs[self.input_index as usize].prev_output)?,
         ])?;
 
         Boolean::<F>::kary_or(&[is_base_case_verified, is_recursive_case_verified])?
@@ -176,7 +179,7 @@ mod tests {
 
     type TestTCP = TransactionChainProofPredicate<Config>;
 
-    // Test transactions, they form a primary chain (chain_index = 0)
+    // Test transactions, they form a chain with (input_index, output_index) = (0, 0)
     fn transactions() -> [Tx; 3] {
         [
             Tx::read(
@@ -199,7 +202,7 @@ mod tests {
         base_case: bool,
         expected_result: bool,
     ) -> () {
-        let tcp = TestTCP::new(&genesis_txid, &0);
+        let tcp = TestTCP::new(&genesis_txid, 0, 0);
 
         let cs = ConstraintSystem::<ScalarFieldMNT6>::new_ref();
         let msg_var =

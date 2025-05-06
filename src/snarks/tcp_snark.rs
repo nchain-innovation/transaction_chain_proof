@@ -93,7 +93,8 @@ where
     /// Setup of the SNARK for the given `(genesis_txid, chain_index)`
     pub fn setup(
         genesis_txid: &[u8; 32],
-        chain_index: &u32,
+        input_index: u32,
+        output_index: u32,
     ) -> Result<
         (
             <Self as TransactionChainProofData>::ProvingKey,
@@ -104,7 +105,8 @@ where
         // RNG
         let mut rng = RO::from_entropy();
         // TCP Predicate
-        let tcp_predicate = TransactionChainProofPredicate::<P>::new(genesis_txid, chain_index);
+        let tcp_predicate =
+            TransactionChainProofPredicate::<P>::new(genesis_txid, input_index, output_index);
         // Setup
         PCD::circuit_specific_setup(&tcp_predicate, &mut rng)
             .map_err(|err| (err, SnarkSetup).into())
@@ -113,7 +115,8 @@ where
     /// Prove that `public_input` is part of a transaction chain at index `chain_index` starting at `genesis_txid`
     pub fn prove(
         genesis_txid: &[u8; 32],
-        chain_index: &u32,
+        input_index: u32,
+        output_index: u32,
         pk: &<Self as TransactionChainProofData>::ProvingKey,
         public_input: &TransactionChainProofPublicInput,
         witness: &TransactionChainProofWitness<<Self as TransactionChainProofData>::Proof>,
@@ -121,12 +124,13 @@ where
         // RNG
         let mut rng = RO::from_entropy();
         // TCP predicate
-        let tcp_predicate = TransactionChainProofPredicate::<P>::new(genesis_txid, chain_index);
+        let tcp_predicate =
+            TransactionChainProofPredicate::<P>::new(genesis_txid, input_index, output_index);
         // Unwrap witness values
         let (prior_msgs, local_witness): (&[MessageOutPoint], LocalWitnessOutPoint<P>) =
             match &witness.tx {
                 Some(tx) => (
-                    &[MessageOutPoint::from_tx(tx.clone(), *chain_index as usize)],
+                    &[MessageOutPoint::from_tx(tx.clone(), input_index as usize)],
                     tx.clone().into(),
                 ),
                 None => (&[], LocalWitnessOutPoint::<P>::default()),
@@ -168,6 +172,7 @@ where
 
 #[cfg(test)]
 mod tests {
+    use ark_ff::PrimeField;
     use ark_mnt4_298::{
         Fq as ScalarFieldMNT6, Fr as ScalarFieldMNT4, g1::Parameters as ShortWeierstrassParameters,
     };
@@ -179,8 +184,10 @@ mod tests {
     use ark_mnt4_298::{MNT4_298, constraints::PairingVar as MNT4PairingVar};
     use ark_mnt6_298::{MNT6_298, constraints::PairingVar as MNT6PairingVar};
 
+    use ark_pcd::PCD as arkPCD;
     use bitcoin_r1cs::constraints::tx::TxVarConfig;
     use chain_gang::{messages::Tx, util::Serializable};
+    use rand::{CryptoRng, Rng, SeedableRng};
     use rand_chacha::ChaChaRng;
 
     use std::io::Cursor;
@@ -201,8 +208,8 @@ mod tests {
     }
     type TestPCD = ECCyclePCD<ScalarFieldMNT6, ScalarFieldMNT4, PCDGroth16Mnt4>;
 
-    // Test transactions, they form a primary chain (chain_index = 0)
-    fn transactions() -> [Tx; 3] {
+    // Test transactions, they form a primary chain, (input_index, output_index) = (0,0)
+    fn transactions_zero_zero() -> [Tx; 3] {
         [
             Tx::read(
              &mut Cursor::new(hex::decode("0100000001f9f034a0927022546dd779118e90d1125f94c9a8d4a903941d0ccc6a178d200d000000006b4830450221009eda6ae95d014b177f923e7880ca9b95dbe95f7a190eee2c4a223752e1c84fb102200c727fdcd19cbb1f1fad49607b28971925c029f894003cffaf4024f6e13817d8012103c66918716436f526bc5c9ab0919f22bf73c533f782ff066bd4e5b89dd0e61bfcffffffff021e81e21b440000001976a91483e6b5769fd253bd05346aa1a19be451c04fb75388ac80af3c9d000000001976a914ced70e663b2c328d2b936e6775e1adba1eaa6dcb88ac00000000").unwrap())
@@ -216,10 +223,25 @@ mod tests {
         ]
     }
 
-    // Structure of the transactions in the chain
+    // Test transactions, they form a primary chain, (input_index, output_index) = (0,1)
+    fn transactions_zero_one() -> [Tx; 3] {
+        [
+            Tx::read(
+             &mut Cursor::new(hex::decode("0100000002bef1690fa0bcffba82cf0b3c72920713eaa736b07fe9a9508f0a9839fa92d3a9000000006b4830450221009eda6ae95d014b177f923e7880ca9b95dbe95f7a190eee2c4a223752e1c84fb102200c727fdcd19cbb1f1fad49607b28971925c029f894003cffaf4024f6e13817d8012103c66918716436f526bc5c9ab0919f22bf73c533f782ff066bd4e5b89dd0e61bfc00000000bef1690fa0bcffba82cf0b3c72920713eaa736b07fe9a9508f0a9839fa92d3a9000000006b4830450221009eda6ae95d014b177f923e7880ca9b95dbe95f7a190eee2c4a223752e1c84fb102200c727fdcd19cbb1f1fad49607b28971925c029f894003cffaf4024f6e13817d8012103c66918716436f526bc5c9ab0919f22bf73c533f782ff066bd4e5b89dd0e61bfc000000000200000000000000001976a9149c2c4059f1949122c1c085676b4150bfc32562c488ac00000000000000001976a9149c2c4059f1949122c1c085676b4150bfc32562c488ac00000000").unwrap())
+            ).unwrap(),
+            Tx::read(
+            &mut Cursor::new(hex::decode("0100000002be3558a30da2c5d06bd34e081b11ed0bc8acca217337c3dbdce1a93cf800b1b5010000006b4830450221009eda6ae95d014b177f923e7880ca9b95dbe95f7a190eee2c4a223752e1c84fb102200c727fdcd19cbb1f1fad49607b28971925c029f894003cffaf4024f6e13817d8012103c66918716436f526bc5c9ab0919f22bf73c533f782ff066bd4e5b89dd0e61bfc00000000bef1690fa0bcffba82cf0b3c72920713eaa736b07fe9a9508f0a9839fa92d3a9010000006b4830450221009eda6ae95d014b177f923e7880ca9b95dbe95f7a190eee2c4a223752e1c84fb102200c727fdcd19cbb1f1fad49607b28971925c029f894003cffaf4024f6e13817d8012103c66918716436f526bc5c9ab0919f22bf73c533f782ff066bd4e5b89dd0e61bfc000000000200000000000000001976a9149c2c4059f1949122c1c085676b4150bfc32562c488ac00000000000000001976a9149c2c4059f1949122c1c085676b4150bfc32562c488ac00000000").unwrap())
+            ).unwrap(),
+            Tx::read(
+            &mut Cursor::new(hex::decode("01000000023b5e7a0da6b941e1b851c7b7c6aa8ebc2188730570dc8daa67b6f19d43dfba9c010000006b4830450221009eda6ae95d014b177f923e7880ca9b95dbe95f7a190eee2c4a223752e1c84fb102200c727fdcd19cbb1f1fad49607b28971925c029f894003cffaf4024f6e13817d8012103c66918716436f526bc5c9ab0919f22bf73c533f782ff066bd4e5b89dd0e61bfc00000000bef1690fa0bcffba82cf0b3c72920713eaa736b07fe9a9508f0a9839fa92d3a9010000006b4830450221009eda6ae95d014b177f923e7880ca9b95dbe95f7a190eee2c4a223752e1c84fb102200c727fdcd19cbb1f1fad49607b28971925c029f894003cffaf4024f6e13817d8012103c66918716436f526bc5c9ab0919f22bf73c533f782ff066bd4e5b89dd0e61bfc000000000200000000000000001976a9149c2c4059f1949122c1c085676b4150bfc32562c488ac00000000000000001976a9149c2c4059f1949122c1c085676b4150bfc32562c488ac00000000").unwrap())
+            ).unwrap()
+        ]
+    }
+
+    // Structure of the transactions in the chain (input_index, output_index) = (0, 0)
     #[derive(Clone)]
-    struct Config;
-    impl TxVarConfig for Config {
+    struct ConfigZeroZero;
+    impl TxVarConfig for ConfigZeroZero {
         const N_INPUTS: usize = 1;
         const N_OUTPUTS: usize = 2;
         const LEN_UNLOCK_SCRIPTS: &[usize] = &[0x6b];
@@ -228,18 +250,38 @@ mod tests {
         const PRE_SIGHASH_N_INPUT: Option<usize> = None;
     }
 
-    type TestTCPSnark = TransactionChainProofSNARK<ScalarFieldMNT6, Config, TestPCD, ChaChaRng>;
+    // Structure of the transactions in the chain (input_index, output_index) = (0, 1)
+    #[derive(Clone)]
+    struct ConfigZeroOne;
+    impl TxVarConfig for ConfigZeroOne {
+        const N_INPUTS: usize = 2;
+        const N_OUTPUTS: usize = 2;
+        const LEN_UNLOCK_SCRIPTS: &[usize] = &[0x6b, 0x6b];
+        const LEN_LOCK_SCRIPTS: &[usize] = &[0x19, 0x19];
+        const LEN_PREV_LOCK_SCRIPT: Option<usize> = None;
+        const PRE_SIGHASH_N_INPUT: Option<usize> = None;
+    }
 
-    #[test]
-    fn groth16_snark_is_ok() {
-        let genesis_tx = transactions()[0].clone();
+    fn test_groth16_snark<F, P, PCD, RO>(input_index: u32, output_index: u32, transactions: [Tx; 3])
+    where
+        F: PrimeField,
+        P: TxVarConfig + Clone,
+        PCD: arkPCD<F>,
+        RO: Rng + CryptoRng + SeedableRng,
+    {
+        let genesis_tx = transactions[0].clone();
         let genesis_txid = genesis_tx.hash().0;
 
         // Setup
-        let (pk, vk) = TestTCPSnark::setup(&genesis_txid, &0u32).unwrap();
+        let (pk, vk) = TransactionChainProofSNARK::<F, P, PCD, RO>::setup(
+            &genesis_txid,
+            input_index,
+            output_index,
+        )
+        .unwrap();
 
         // Prove and Verify base case
-        let first_tx = transactions()[1].clone();
+        let first_tx = transactions[1].clone();
         let public_input = TransactionChainProofPublicInput {
             outpoint: first_tx.inputs[0].prev_output.clone(),
         };
@@ -247,23 +289,59 @@ mod tests {
             tx: None,          // Base case, so None
             prior_proof: None, // Base case, so None
         };
-        let proof =
-            TestTCPSnark::prove(&genesis_txid, &0u32, &pk, &public_input, &witness).unwrap();
-        let is_proof_valid = TestTCPSnark::verify(&vk, &public_input, &proof).unwrap();
+        let proof = TransactionChainProofSNARK::<F, P, PCD, RO>::prove(
+            &genesis_txid,
+            input_index,
+            output_index,
+            &pk,
+            &public_input,
+            &witness,
+        )
+        .unwrap();
+        let is_proof_valid =
+            TransactionChainProofSNARK::<F, P, PCD, RO>::verify(&vk, &public_input, &proof)
+                .unwrap();
         assert!(is_proof_valid);
 
         // Prove and Verify recursive case
-        let second_tx = transactions()[2].clone();
+        let second_tx = transactions[2].clone();
         let public_input = TransactionChainProofPublicInput {
-            outpoint: second_tx.inputs[0].prev_output.clone(),
+            outpoint: second_tx.inputs[input_index as usize].prev_output.clone(),
         };
         let witness = TransactionChainProofWitness {
             tx: Some(first_tx.clone()),
             prior_proof: Some(proof.clone()),
         };
-        let proof =
-            TestTCPSnark::prove(&genesis_txid, &0u32, &pk, &public_input, &witness).unwrap();
-        let is_proof_valid = TestTCPSnark::verify(&vk, &public_input, &proof).unwrap();
+        let proof = TransactionChainProofSNARK::<F, P, PCD, RO>::prove(
+            &genesis_txid,
+            input_index,
+            output_index,
+            &pk,
+            &public_input,
+            &witness,
+        )
+        .unwrap();
+        let is_proof_valid =
+            TransactionChainProofSNARK::<F, P, PCD, RO>::verify(&vk, &public_input, &proof)
+                .unwrap();
         assert!(is_proof_valid);
+    }
+
+    #[test]
+    fn groth16_snark_zero_zero_is_ok() {
+        test_groth16_snark::<ScalarFieldMNT6, ConfigZeroZero, TestPCD, ChaChaRng>(
+            0,
+            0,
+            transactions_zero_zero(),
+        );
+    }
+
+    #[test]
+    fn groth16_snark_zero_one_is_ok() {
+        test_groth16_snark::<ScalarFieldMNT6, ConfigZeroOne, TestPCD, ChaChaRng>(
+            0,
+            1,
+            transactions_zero_one(),
+        );
     }
 }

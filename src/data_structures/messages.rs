@@ -58,8 +58,8 @@ impl MessageOutPoint {
         }
     }
 
-    pub fn from_tx(value: Tx, chain_index: usize) -> Self {
-        MessageOutPoint::new(&value.inputs[chain_index].prev_output)
+    pub fn from_tx(value: Tx, input_index: usize) -> Self {
+        MessageOutPoint::new(&value.inputs[input_index].prev_output)
     }
 }
 
@@ -125,8 +125,8 @@ impl MessageUniversalTCP {
         }
     }
 
-    pub fn new_from_tx(tx: &Tx, chain_index: &u32, genesis_txid: &[u8; 32]) -> Self {
-        Self::new(&tx.inputs[*chain_index as usize].prev_output, genesis_txid)
+    pub fn new_from_tx(tx: &Tx, input_index: u32, genesis_txid: &[u8; 32]) -> Self {
+        Self::new(&tx.inputs[input_index as usize].prev_output, genesis_txid)
     }
 }
 

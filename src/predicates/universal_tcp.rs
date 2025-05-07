@@ -26,13 +26,13 @@ use crate::data_structures::{
 ///
 /// **Parties:** Alice, Bob
 ///
-/// **Common knowledge:** `genesis_txid`, `chain_index`
+/// **Common knowledge:** `genesis_txid`, `input_index`, `output_index`
 ///
 /// **Goal:**
-/// Alice holds a transaction `Tx` and she wants to prove that `Tx.outputs[chain_index]` belongs to a transaction chain with index
-/// `chain_index` starting at `genesis_txid`. Namely, there exist a chain `(Tx0, Tx1, Tx2, .., Txn)` such that:
+/// Alice holds a transaction `Tx` and she wants to prove that `Tx.outputs[output_index]` belongs to a transaction chain
+/// with indices `(input_index, output_index)` starting at `genesis_txid`. Namely, there exist a chain `(Tx0, Tx1, Tx2, .., Txn)` such that:
 /// 1. `Tx0.txid() = genesis_txid`
-/// 2. `Tx(i+1).inputs[chain_index] = (Txi.txid(), chain_index)`, `0 <= i <= n-1`
+/// 2. `Tx(i+1).inputs[input_index] = (Txi.txid(), output_index)`, `0 <= i <= n-1`
 /// 3. `Txn = Tx`
 ///
 /// The circuit is the following:
@@ -43,11 +43,11 @@ use crate::data_structures::{
 ///
 /// ```"no_rust"
 /// match base_case {
-///     true => (msg.outpoint = (msg.genesis_txid, chain_index))
+///     true => (msg.outpoint = (msg.genesis_txid, output_index))
 ///     false => {
-///                (msg.outpoint = (witness.txid(), chain_index))
+///                (msg.outpoint = (witness.txid(), output_index))
 ///                     AND (msg.genesis_txid = prior_msgs.genesis_txid)
-///                         AND (witness.inputs[chain_index].prev_output = prior_msg.outpoint)
+///                         AND (witness.inputs[input_index].prev_output = prior_msg.outpoint)
 ///     }
 /// }
 /// ```
@@ -55,16 +55,18 @@ use crate::data_structures::{
 /// **Note**: This predicate should only be used in a protocol in which Bob verifies that the public input contains the `genesis_txid`
 /// he is interested in.
 pub struct UniversalTransactionChainProofPredicate<P: TxVarConfig + Clone> {
-    /// The index of the chain
-    pub chain_index: u32,
+    /// The indices of the chain
+    pub input_index: u32,
+    pub output_index: u32,
     /// The structure of the transactions in the chain
     _config: PhantomData<P>,
 }
 
 impl<P: TxVarConfig + Clone> UniversalTransactionChainProofPredicate<P> {
-    pub fn new(chain_index: &u32) -> Self {
+    pub fn new(input_index: u32, output_index: u32) -> Self {
         Self {
-            chain_index: *chain_index,
+            input_index,
+            output_index,
             _config: PhantomData,
         }
     }
@@ -73,7 +75,8 @@ impl<P: TxVarConfig + Clone> UniversalTransactionChainProofPredicate<P> {
 impl<P: TxVarConfig + Clone> Clone for UniversalTransactionChainProofPredicate<P> {
     fn clone(&self) -> Self {
         Self {
-            chain_index: self.chain_index,
+            input_index: self.input_index,
+            output_index: self.output_index,
             _config: PhantomData,
         }
     }
@@ -103,14 +106,14 @@ impl<F: PrimeField, P: TxVarConfig + Clone> PCDPredicate<F>
         let base_case_expected_input = {
             OutPointVar::<F> {
                 prev_tx: msg.genesis_txid.clone(),
-                prev_index: UInt32::<F>::constant(self.chain_index),
+                prev_index: UInt32::<F>::constant(self.output_index),
             }
         };
 
         let recursive_case_expected_input = {
             OutPointVar::<F> {
                 prev_tx: txid_witness.clone(),
-                prev_index: UInt32::<F>::constant(self.chain_index),
+                prev_index: UInt32::<F>::constant(self.output_index),
             }
         };
 
@@ -122,7 +125,7 @@ impl<F: PrimeField, P: TxVarConfig + Clone> PCDPredicate<F>
             msg.outpoint.is_eq(&recursive_case_expected_input)?,
             prior_msgs[0]
                 .outpoint
-                .is_eq(&witness.inputs[self.chain_index as usize].prev_output)?,
+                .is_eq(&witness.inputs[self.input_index as usize].prev_output)?,
             msg.genesis_txid.is_eq(&prior_msgs[0].genesis_txid)?,
         ])?;
 
@@ -158,8 +161,6 @@ mod tests {
         const N_OUTPUTS: usize = 2;
         const LEN_UNLOCK_SCRIPTS: &[usize] = &[0x49, 0x49];
         const LEN_LOCK_SCRIPTS: &[usize] = &[0x23, 0x23];
-        const LEN_PREV_LOCK_SCRIPT: Option<usize> = Some(0x23);
-        const PRE_SIGHASH_N_INPUT: Option<usize> = None;
     }
 
     type TestTCP = UniversalTransactionChainProofPredicate<Config>;
@@ -180,14 +181,15 @@ mod tests {
     }
 
     fn test_predicate(
-        chain_index: &u32,
+        input_index: u32,
+        output_index: u32,
         msg: <TestTCP as PCDPredicate<ScalarFieldMNT6>>::Message,
         prior_msg: <TestTCP as PCDPredicate<ScalarFieldMNT6>>::Message,
         witness: <TestTCP as PCDPredicate<ScalarFieldMNT6>>::LocalWitness,
         base_case: bool,
         expected_result: bool,
     ) -> () {
-        let tcp = TestTCP::new(chain_index);
+        let tcp = TestTCP::new(input_index, output_index);
 
         let cs = ConstraintSystem::<ScalarFieldMNT6>::new_ref();
         let msg_var =
@@ -214,15 +216,17 @@ mod tests {
     #[test]
     fn base_case_is_ok() {
         let genesis_txid = transactions()[0].hash().0;
-        let chain_index = 0u32;
+        let input_index = 0u32;
+        let output_index = 0u32;
         let msg = MessageUniversalTCP::new_from_tx(
             &transactions()[1].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
         );
         let prior_msg = msg.clone(); // Can be anything
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg,
             prior_msg,
             transactions()[1].clone().into(), // Can be anything
@@ -234,15 +238,17 @@ mod tests {
     #[test]
     fn base_case_with_bad_tx_fails() {
         let genesis_txid = transactions()[0].hash().0;
-        let chain_index = 0u32;
+        let input_index = 0u32;
+        let output_index = 0u32;
         let msg = MessageUniversalTCP::new_from_tx(
             &transactions()[2].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
         ); // Wrong transaction: its parent is not the genesis
         let prior_msg = msg.clone(); // Can be anything
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg,
             prior_msg,
             transactions()[1].clone().into(), // Can be anything
@@ -265,12 +271,14 @@ mod tests {
         .to_vec();
 
         let genesis_txid = transactions()[0].hash().0;
-        let chain_index = 0u32;
-        let msg = MessageUniversalTCP::new_from_tx(&bad_tx, &chain_index, &genesis_txid); // Wrong outpoint: its not part of a primary chain
+        let input_index = 0u32;
+        let output_index = 0u32;
+        let msg = MessageUniversalTCP::new_from_tx(&bad_tx, input_index, &genesis_txid); // Wrong outpoint: its not part of a primary chain
         let prior_msg = msg.clone(); // Can be anything
 
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg,
             prior_msg,
             transactions()[1].clone().into(), // Can be anything
@@ -281,12 +289,14 @@ mod tests {
 
     #[test]
     fn base_case_with_bad_genesis_and_correct_chain_index_fails() {
-        let chain_index = 0u32;
+        let input_index = 0u32;
+        let output_index = 0u32;
         let msg =
-            MessageUniversalTCP::new_from_tx(&transactions()[1].clone(), &chain_index, &[0; 32]); // Bad genesis_txid
+            MessageUniversalTCP::new_from_tx(&transactions()[1].clone(), input_index, &[0; 32]); // Bad genesis_txid
         let prior_msg = msg.clone(); // Can be anything
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg,
             prior_msg,
             transactions()[1].clone().into(),
@@ -298,15 +308,17 @@ mod tests {
     #[test]
     fn base_case_with_bad_chain_index_and_correct_genesis_fails() {
         let genesis_txid = transactions()[0].hash().0;
-        let chain_index = 1u32;
+        let input_index = 1u32;
+        let output_index = 0u32;
         let msg = MessageUniversalTCP::new_from_tx(
             &transactions()[1].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
-        ); // Bad chain_index
+        ); // Bad input_index
         let prior_msg = msg.clone(); // Can be anything
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg,
             prior_msg,
             transactions()[1].clone().into(),
@@ -318,19 +330,21 @@ mod tests {
     #[test]
     fn recursive_case_is_ok() {
         let genesis_txid = transactions()[0].hash().0;
-        let chain_index = 0u32;
+        let input_index = 0u32;
+        let output_index = 0u32;
         let msg = MessageUniversalTCP::new_from_tx(
             &transactions()[2].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
         );
         let prior_msg: MessageUniversalTCP = MessageUniversalTCP::new_from_tx(
             &transactions()[1].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
         );
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg,
             prior_msg,
             transactions()[1].clone().into(),
@@ -342,15 +356,17 @@ mod tests {
     #[test]
     fn recursive_case_with_bad_tx_fails() {
         let genesis_txid = transactions()[0].hash().0;
-        let chain_index = 0u32;
+        let input_index = 0u32;
+        let output_index = 0u32;
         let msg = MessageUniversalTCP::new_from_tx(
             &transactions()[2].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
         );
         let prior_msg = msg.clone(); // Wrong transaction, is not the previous one
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg,
             prior_msg,
             transactions()[1].clone().into(), // **NOTE**: The witness is correct
@@ -373,16 +389,18 @@ mod tests {
         .to_vec();
 
         let genesis_txid = transactions()[0].hash().0;
-        let chain_index = 0u32;
-        let msg = MessageUniversalTCP::new_from_tx(&bad_tx, &chain_index, &genesis_txid);
+        let input_index = 0u32;
+        let output_index = 0u32;
+        let msg = MessageUniversalTCP::new_from_tx(&bad_tx, input_index, &genesis_txid);
         let prior_msg = MessageUniversalTCP::new_from_tx(
             &transactions()[1].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
         ); // The prior message is correct
 
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg, // Wrong input: its not part of a primary chain
             prior_msg,
             transactions()[1].clone().into(), // Witness is correct
@@ -394,16 +412,18 @@ mod tests {
     #[test]
     fn recursive_case_with_bad_genesis_and_correct_chain_index_fails() {
         let genesis_txid = transactions()[0].hash().0;
-        let chain_index = 0u32;
+        let input_index = 0u32;
+        let output_index = 0u32;
         let msg =
-            MessageUniversalTCP::new_from_tx(&transactions()[2].clone(), &chain_index, &[0; 32]);
+            MessageUniversalTCP::new_from_tx(&transactions()[2].clone(), input_index, &[0; 32]);
         let prior_msg = MessageUniversalTCP::new_from_tx(
             &transactions()[1].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
         ); // The prior message is correct
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg,
             prior_msg,
             transactions()[1].clone().into(), // The witness is correct
@@ -415,19 +435,21 @@ mod tests {
     #[test]
     fn recursive_case_with_bad_chain_index_and_correct_genesis_fails() {
         let genesis_txid = transactions()[0].hash().0;
-        let chain_index = 1u32;
+        let input_index = 1u32;
+        let output_index = 0u32;
         let msg = MessageUniversalTCP::new_from_tx(
             &transactions()[2].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
-        ); // Bad chain_index
+        ); // Bad input_index
         let prior_msg = MessageUniversalTCP::new_from_tx(
             &transactions()[1].clone(),
-            &chain_index,
+            input_index,
             &genesis_txid,
         ); // The prior message is correct
         test_predicate(
-            &chain_index,
+            input_index,
+            output_index,
             msg,
             prior_msg,
             transactions()[1].clone().into(),

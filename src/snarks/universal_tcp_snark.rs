@@ -269,8 +269,6 @@ mod tests {
         const N_OUTPUTS: usize = 2;
         const LEN_UNLOCK_SCRIPTS: &[usize] = &[0x6b];
         const LEN_LOCK_SCRIPTS: &[usize] = &[0x19, 0x19];
-        const LEN_PREV_LOCK_SCRIPT: Option<usize> = None;
-        const PRE_SIGHASH_N_INPUT: Option<usize> = None;
     }
 
     // Structure of the transactions in the chain
@@ -281,8 +279,6 @@ mod tests {
         const N_OUTPUTS: usize = 1;
         const LEN_UNLOCK_SCRIPTS: &[usize] = &[0x6b, 0x6b];
         const LEN_LOCK_SCRIPTS: &[usize] = &[0x19];
-        const LEN_PREV_LOCK_SCRIPT: Option<usize> = None;
-        const PRE_SIGHASH_N_INPUT: Option<usize> = None;
     }
 
     // Structure of the transactions in the chain (input_index, output_index) = (0, 1)
@@ -293,8 +289,6 @@ mod tests {
         const N_OUTPUTS: usize = 2;
         const LEN_UNLOCK_SCRIPTS: &[usize] = &[0x6b, 0x6b];
         const LEN_LOCK_SCRIPTS: &[usize] = &[0x19, 0x19];
-        const LEN_PREV_LOCK_SCRIPT: Option<usize> = None;
-        const PRE_SIGHASH_N_INPUT: Option<usize> = None;
     }
 
     fn test_groth16_snark<F, P, PCD, RO>(input_index: u32, output_index: u32, transactions: [Tx; 3])

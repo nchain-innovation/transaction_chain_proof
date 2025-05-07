@@ -173,8 +173,6 @@ mod tests {
         const N_OUTPUTS: usize = 2;
         const LEN_UNLOCK_SCRIPTS: &[usize] = &[0x49, 0x49];
         const LEN_LOCK_SCRIPTS: &[usize] = &[0x23, 0x23];
-        const LEN_PREV_LOCK_SCRIPT: Option<usize> = Some(0x23);
-        const PRE_SIGHASH_N_INPUT: Option<usize> = None;
     }
 
     type TestTCP = TransactionChainProofPredicate<Config>;

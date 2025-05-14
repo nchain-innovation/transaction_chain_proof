@@ -316,6 +316,34 @@ dependencies = [
 ]
 
 [[package]]
+name = "ark-pcd"
+version = "0.1.0"
+source = "git+https://github.com/nchain-innovation/pcd.git?branch=teranodegroup%2Fuse-short-weierstrass-curve#1bd8f435cfaff4dff65680270128a035cbbe4d2c"
+dependencies = [
+ "ark-crypto-primitives",
+ "ark-ec",
+ "ark-ed-on-bls12-381",
+ "ark-ed-on-mnt4-298",
+ "ark-ff",
+ "ark-gm17",
+ "ark-groth16",
+ "ark-marlin",
+ "ark-mnt4-298",
+ "ark-mnt6-298",
+ "ark-nonnative-field",
+ "ark-poly",
+ "ark-poly-commit",
+ "ark-r1cs-std",
+ "ark-relations",
+ "ark-serialize",
+ "ark-snark",
+ "ark-std",
+ "derivative",
+ "rand_chacha",
+ "tracing",
+]
+
+[[package]]
 name = "ark-poly"
 version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -478,7 +506,7 @@ dependencies = [
  "ark-groth16",
  "ark-mnt4-753",
  "ark-mnt6-753",
- "ark-pcd",
+ "ark-pcd 0.1.0 (git+https://github.com/BarbacoviF/pcd.git?branch=barbacovif%2Fuse-short-weierstrass-curve)",
  "ark-r1cs-std",
  "ark-relations",
  "ark-serialize",
@@ -1313,7 +1341,7 @@ dependencies = [
  "ark-mnt4-753",
  "ark-mnt6-298",
  "ark-mnt6-753",
- "ark-pcd",
+ "ark-pcd 0.1.0 (git+https://github.com/nchain-innovation/pcd.git?branch=teranodegroup%2Fuse-short-weierstrass-curve)",
  "ark-r1cs-std",
  "ark-relations",
  "ark-std",

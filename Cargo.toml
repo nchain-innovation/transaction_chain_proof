@@ -9,7 +9,7 @@ ark-ff = "0.3.0"
 ark-groth16 = "0.3.0"
 ark-mnt4-298 = "0.3.0"
 ark-mnt6-298 = "0.3.0"
-ark-pcd = { git = "https://github.com/BarbacoviF/pcd.git", branch = "barbacovif/use-short-weierstrass-curve", version = "0.1.0" }
+ark-pcd = { git = "https://github.com/nchain-innovation/pcd.git", branch = "teranodegroup/use-short-weierstrass-curve", version = "0.1.0" }
 ark-r1cs-std = "0.3.0"
 ark-relations = "0.3.0"
 bitcoin_r1cs = { git = "https://github.com/nchain-innovation/bitcoin_r1cs.git", branch = "ark-3.0"}
